@@ -1,0 +1,120 @@
+/*
+Copyright (C) 2014 by Joachim Meyer
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+*/
+#include "MessengerFrame.h"
+#include "ChatFrame.h"
+#include "ConnectionWindow.h"
+
+MessengerFrame::MessengerFrame(){
+	chat = NULL;
+
+	connBtn = new UIButton("Connections", 100);
+	connBtn->addEventListener(this, UIEvent::CLICK_EVENT);
+	addChild(connBtn);
+	connBtn->setPosition(50,50);
+
+	connWin = new ConnectionWindow();
+	connWin->setPosition(getHeight()/2 - connWin->getHeight()/2, getWidth()/2 - connWin->getWidth()/2);
+
+	modalBlocker = new UIRect(10, 10);
+	modalBlocker->setBlendingMode(Renderer::BLEND_MODE_NORMAL);
+	modalBlocker->setColor(0, 0, 0, 0.4);
+	modalBlocker->setAnchorPoint(-1.0, -1.0, 0.0);
+	modalBlocker->enabled = false;
+	modalBlocker->blockMouseInput = true;
+	modalBlocker->processInputEvents = true;
+	addChild(modalBlocker);
+
+	modalRoot = new UIElement();
+	addChild(modalRoot);
+
+	modalChild = NULL;
+
+	Resize(Services()->getCore()->getXRes(), Services()->getCore()->getYRes());
+}
+
+MessengerFrame::~MessengerFrame(){}
+
+void MessengerFrame::newChat(String address){
+	chat = new ChatFrame(address);
+	chat->addEventListener(this, UIEvent::OK_EVENT);
+	addChild(chat);
+}
+
+void MessengerFrame::showModal(UIWindow* modalChild){
+	modalBlocker->enabled = true;
+
+	//focusChild(NULL);
+
+	this->modalChild = modalChild;
+	modalRoot->addChild(modalChild);
+	modalChild->showWindow();
+	modalChild->addEventListener(this, UIEvent::CLOSE_EVENT);
+	Resize(getWidth(), getHeight());
+
+	CoreServices::getInstance()->getCore()->setCursor(Core::CURSOR_ARROW);
+}
+
+void MessengerFrame::hideModal() {
+	if (modalChild) {
+		modalRoot->removeChild(modalChild);
+		//assetBrowser->removeAllHandlers();
+		modalChild->hideWindow();
+		modalChild = NULL;
+	}
+	modalBlocker->enabled = false;
+}
+
+TextInputPopup* MessengerFrame::showTextInput(String caption, String action, String value){
+	textPopup->action = action;
+	textPopup->setCaption(caption);
+	textPopup->setValue(value);
+	showModal(textPopup);
+	return textPopup;
+}
+
+void MessengerFrame::Resize(int width, int height){
+	setHeight(height);
+	setWidth(width);
+
+	modalBlocker->Resize(width, height);
+
+	connWin->setPosition(getHeight() / 2 - connWin->getHeight() / 2, getWidth() / 2 - connWin->getWidth() / 2);
+}
+
+void MessengerFrame::handleEvent(Event *e){
+	if (e->getEventType() == "UIEvent"){
+		if (e->getDispatcher() == modalChild){
+			if (e->getEventCode() == UIEvent::CLOSE_EVENT){
+				hideModal();
+			}
+		}
+		if (e->getDispatcher() == connBtn){
+			showModal(connWin);
+		}
+	}
+	if (e->getDispatcher() == chat){
+		ChatEvent* cEvent = (ChatEvent*)e;
+		if (cEvent->getEventCode() == ChatEvent::EVENT_NEW_CHAT_MSG){
+			connWin->connections->getConnection(cEvent->address)->sslWrite(const_cast<char*>(cEvent->message.c_str()));
+		}
+	}
+}

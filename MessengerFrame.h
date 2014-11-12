@@ -1,5 +1,4 @@
-The MIT License (MIT)
-
+/*
 Copyright (C) 2014 by Joachim Meyer
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -19,3 +18,39 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
+*/
+#pragma once
+#include <PolycodeUI.h>
+#include "ToolWindows.h"
+
+class ChatFrame;
+class ConnectionWindow;
+
+class MessengerFrame : public UIElement {
+public:
+	MessengerFrame();
+	~MessengerFrame();
+
+	void newChat(String address);
+
+	void showModal(UIWindow* modal);
+	void hideModal();
+
+	TextInputPopup *showTextInput(String caption, String action, String value);
+
+	void Resize(int width, int height);
+	void handleEvent(Event *e);
+
+private:
+	ChatFrame* chat;
+
+	UIButton *connBtn;
+
+	ConnectionWindow *connWin;
+	TextInputPopup *textPopup;
+
+	UIElement* modalRoot;
+	UIRect *modalBlocker;
+	UIWindow *modalChild;
+};
+
