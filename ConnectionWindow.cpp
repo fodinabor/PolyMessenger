@@ -93,7 +93,7 @@ void ConnectionWindow::handleEvent(Event *e){
 			if (e->getEventCode() == ConnectionEvent::CONNECT_EVENT){
 				globalFrame->showModal(this);
 				refreshList();
-				globalFrame->newChat(addrInput->getText());
+				globalFrame->newChat(connE->connection->getAddress());
 			}
 			if (e->getEventCode() == ConnectionEvent::DISCONNECT_EVENT){
 				connections->disconnect(connE->connection->getAddress());
