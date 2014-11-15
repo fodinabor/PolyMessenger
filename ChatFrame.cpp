@@ -33,8 +33,10 @@ ChatMessage::ChatMessage(String content, int who){
 	
 	if (who == ChatMessage::OWN_MESSAGE)
 		messageBg->setColor(0.2, 0.5, 0.5, 0.4);
-	else
+	else if (who == ChatMessage::PARTNER_MESSAGE)
 		messageBg->setColor(0.5, 0.5, 0.2, 0.4);
+	else if (who == ChatMessage::SYSTEM_MESSAGE)
+		messageBg->setColor(0.5, 0.0, 0.0, 0.4);
 
 	messageBg->setBlendingMode(Renderer::BLEND_MODE_NORMAL);
 	messageBg->addEventListener(this, InputEvent::EVENT_MOUSEDOWN);
@@ -80,9 +82,9 @@ void ChatMessage::handleEvent(Event *e){
 	UIElement::handleEvent(e);
 }
 
-ChatFrame::ChatFrame(String address) : UIElement(200, Services()->getCore()->getYRes()){
+ChatFrame::ChatFrame(String address) : UIElement(Services()->getCore()->getXRes() - 150, Services()->getCore()->getYRes()){
 	this->address = address;
-	setPosition(Services()->getCore()->getXRes() / 2 - getWidth() / 2, 0);
+	setPosition(Services()->getCore()->getXRes() - getWidth(), 0);
 
 	chatInput = new UITextInput(true, 200, 50);
 	addChild(chatInput);
@@ -92,6 +94,8 @@ ChatFrame::ChatFrame(String address) : UIElement(200, Services()->getCore()->get
 	sendBtn->addEventListener(this, UIEvent::CLICK_EVENT);
 	chatInput->addChild(sendBtn);
 	sendBtn->setPositionX(chatInput->getWidth() + 30);
+
+	Resize(getWidth(), getHeight());
 }
 
 ChatFrame::~ChatFrame(){}
@@ -105,7 +109,7 @@ void ChatFrame::newMessage(String message, int who){
 	}
 	messages.push_back(newMsg);
 	addChild(newMsg);
-	Resize(getHeight(), getWidth());
+	Resize(getWidth(), getHeight());
 }
 
 String ChatFrame::getAddress(){
@@ -116,6 +120,8 @@ void ChatFrame::Resize(int width, int height){
 	setWidth(width);
 	setHeight(height);
 
+	setPosition(Services()->getCore()->getXRes() - getWidth(), 0);
+
 	int offsetY = 0;
 	for (int i = 0; i < messages.size(); i++){
 		messages[i]->updateSize();
@@ -123,15 +129,18 @@ void ChatFrame::Resize(int width, int height){
 		offsetY += messages[i]->getHeight();
 	}
 
-	chatInput->Resize(200, 50);
+	chatInput->Resize(width-80, 50);
 	chatInput->setPositionY(getHeight() - chatInput->getHeight());
+	sendBtn->setPositionX(chatInput->getWidth() + 30);
 }
 
 void ChatFrame::handleEvent(Event* e){
 	if (e->getDispatcher() == sendBtn && e->getEventType() == "UIEvent"){
-		newMessage(chatInput->getText(), ChatMessage::OWN_MESSAGE);
-		dispatchEvent(new ChatEvent(address, chatInput->getText()), ChatEvent::EVENT_SEND_CHAT_MSG);
-		chatInput->setText("", false);
+		if (chatInput->getText() != ""){
+			newMessage(chatInput->getText(), ChatMessage::OWN_MESSAGE);
+			dispatchEvent(new ChatEvent(address, chatInput->getText()), ChatEvent::EVENT_SEND_CHAT_MSG);
+			chatInput->setText("", false);
+		}
 	}
 }
 

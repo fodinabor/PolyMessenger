@@ -28,7 +28,9 @@ MessengerFrame* globalFrame;
 
 PolyMessengerApp::PolyMessengerApp(PolycodeView *view) {
 	Services()->getLogger()->setLogToFile(true);
-	core = new Win32Core(view, 1000, 1000, false, false, 0, 0, 60);
+	core = new Win32Core(view, 1000, 500, false, false, 0, 0, 15);
+	core->addEventListener(this, Core::EVENT_CORE_RESIZE);
+
 	CoreServices::getInstance()->getResourceManager()->addArchive("default.pak");
 	CoreServices::getInstance()->getResourceManager()->addDirResource("default", false);
 	CoreServices::getInstance()->getResourceManager()->addArchive("Assets/UIThemes.pak");
@@ -78,5 +80,9 @@ bool PolyMessengerApp::Update() {
 }
 
 void PolyMessengerApp::handleEvent(Event* e){
-
+	if (e->getDispatcher() == core){
+		if (e->getEventCode() == Core::EVENT_CORE_RESIZE){
+			mainFrame->Resize(core->getXRes(), core->getYRes());
+		}
+	}
 }

@@ -21,10 +21,13 @@ THE SOFTWARE.
 */
 #include "ConnectionHandler.h"
 #include "ChatFrame.h"
+#include "openssl/crypto.h"
 
 Connection::Connection(int clServ){
 	//timer = new Timer(true, 500);
 	this->clServ = clServ;
+
+	sslMutex = Services()->getCore()->createMutex();
 }
 
 void Connection::disconnect(){
@@ -52,6 +55,22 @@ String Connection::sslRead(){
 	if (s){
 		while (true){
 			received = SSL_read(sslHandle, buffer, readSize);
+			
+			if (SSL_get_error(sslHandle, received) == SSL_ERROR_ZERO_RETURN){
+				received = 0;
+				Logger::log("SSL_ERROR_ZERO_RETURN\n");
+			} else if (SSL_get_error(sslHandle, received) == SSL_ERROR_SYSCALL){
+				received = 0;
+				Logger::log("SSL_ERROR_SYSCALL\n");
+				
+				ConnectionEvent* connE = new ConnectionEvent();
+				connE->connection = this;
+				dispatchEvent(connE, ConnectionEvent::DISCONNECT_EVENT);
+				
+				killThread();
+				return String();
+			}
+			
 			buffer[received] = '\0';
 
 			if (received > 0){
@@ -75,12 +94,11 @@ void Connection::sslWrite(String text){
 		SSL_write(sslHandle, text.c_str(), text.length());
 }
 
-//void Connection::handleEvent(Event *e){
-//	//if (e->getDispatcher() == timer && e->getEventCode() == Timer::EVENT_TRIGGER){
-//	//	if (allSuccess)
-//	//		Services()->getCore()->createThread(this);
-//	//}
-//}
+void Connection::runThread(){
+	while (threadRunning) {
+		updateThread();
+	}
+}
 
 ConnectionClient::ConnectionClient(String address) : Connection(Connection::CONN_CLIENT){
 	this->core = Services()->getCore();
@@ -232,7 +250,9 @@ void ConnectionClient::createSSLConnetion(){
 }
 
 void ConnectionClient::updateThread(){
+	Services()->getCore()->lockMutex(sslMutex);
 	sslRead();
+	Services()->getCore()->unlockMutex(sslMutex);
 #ifdef _WINDOWS
 	Sleep(500);
 #else
@@ -345,40 +365,12 @@ void ConnectionServer::loadCerts(){
 	allSuccess = true;
 }
 
-//String ConnectionServer::sslRead(){
-//	String rc = String();
-//	char buf[1024];
-//	int sd, bytes;
-//
-//	sd = SSL_get_fd(clSocket);
-//
-//	if (SSL_accept(clSocket) == -1) {    /* do SSL-protocol accept */
-//		ERR_print_errors_fp(stderr);
-//	} else {
-//		bytes = SSL_read(clSocket, buf, sizeof(buf)); /* get request */
-//		if (bytes > 0) {
-//
-//			sockaddr_in addr = sockaddr_in();
-//			unsigned long nameLen = sizeof(sockaddr);
-//			getpeername(sd, (struct sockaddr*)&addr, (int*)nameLen);
-//			String ipstringbuffer = inet_ntoa(addr.sin_addr);
-//
-//			buf[bytes] = 0;
-//			dispatchEvent(new ChatEvent(ipstringbuffer , String(buf)), ChatEvent::EVENT_RECEIVE_CHAT_MSG);
-//		} else {
-//			ERR_print_errors_fp(stderr);
-//		}
-//	}     /* get socket connection */
-//	SSL_free(clSocket);         /* release SSL state */
-//	closesocket(sd);          /* close connection */
-//}
-
 void ConnectionServer::updateThread(){
 	struct sockaddr_in addr;
 	socklen_t len = sizeof(addr);
 
 	int client = accept(s, (struct sockaddr*)&addr, &len); /* accept connection as usual */
-	address = inet_ntoa(addr.sin_addr) + String(":") + ntohs(addr.sin_port);
+	address = String(inet_ntoa(addr.sin_addr)) + String(":") + String(ntohs(addr.sin_port));
 	Logger::log("Connection: %s:%d\n", inet_ntoa(addr.sin_addr), ntohs(addr.sin_port));
 	sslHandle = SSL_new(sslContext);  /* get new SSL state with context */
 	SSL_set_fd(sslHandle, client); /* set connection socket to SSL state */
@@ -406,10 +398,15 @@ ConnectionHandler::~ConnectionHandler(){
 	disconnectAll();
 }
 
-void ConnectionHandler::newConnection(String address){
+bool ConnectionHandler::newConnection(String address){
 	Connection* newCon = new ConnectionClient(address);
-	newCon->addEventListener(this, ChatEvent::EVENT_RECEIVE_CHAT_MSG);
-	connections.push_back(newCon);
+	if (newCon->getSuccess()){
+		newCon->addEventListener(this, ChatEvent::EVENT_RECEIVE_CHAT_MSG);
+		newCon->addEventListener(this, ConnectionEvent::DISCONNECT_EVENT);
+		connections.push_back(newCon);
+		return true;
+	}
+	return false;
 }
 
 Connection *ConnectionHandler::getConnection(String address){
@@ -423,7 +420,7 @@ Connection *ConnectionHandler::getConnection(String address){
 void ConnectionHandler::disconnect(String address){
 	for (int i = 0; i < connections.size(); i++){
 		if (connections[0]->getAddress() == address){
-			delete connections[i];
+			Services()->getCore()->removeThread(connections[i]);
 			connections.erase(connections.begin() + i);
 		}
 	}
@@ -459,16 +456,24 @@ void ConnectionHandler::handleEvent(Event* e){
 }
 
 void ConnectionHandler::Update(){
+	Core* core = Services()->getCore();
+	core->lockMutex(server->eventMutex);
 	for (int i = server->eventQueue.size() -1; i >= 0; i--){
 		dispatchEvent(server->eventQueue[i], server->eventQueue[i]->getEventCode());
 		server->eventQueue.erase(server->eventQueue.begin() + i);
 	}
+	core->unlockMutex(server->eventMutex);
 
 	for (int c = 0; c < connections.size(); c++){
 		Connection *connection = connections[c];
+		core->lockMutex(connection->eventMutex);
+		Event *event = new Event();
 		for (int e = connection->eventQueue.size() - 1; e >= 0; e--){
-			dispatchEvent(connection->eventQueue[e], connection->eventQueue[e]->getEventCode());
+			event = connection->eventQueue[e];
 			connection->eventQueue.erase(connection->eventQueue.begin() + e);
+			dispatchEventNoDelete(event, event->getEventCode());
 		}
+		if (event->getEventCode() != ConnectionEvent::DISCONNECT_EVENT)
+			core->unlockMutex(connection->eventMutex);
 	}
 }

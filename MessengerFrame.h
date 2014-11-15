@@ -33,6 +33,8 @@ public:
 	~MessengerFrame();
 
 	void showChat(String address);
+	void newChat(String address);
+	ChatFrame* getChatForAddress(String address);
 
 	void showModal(UIWindow* modal);
 	void hideModal();
@@ -43,8 +45,6 @@ public:
 	void handleEvent(Event *e);
 
 	ConnectionHandler *getConnections();
-
-	ChatFrame* getChatForAddress(String address);
 
 private:
 	std::vector<ChatFrame*> chatFrames;

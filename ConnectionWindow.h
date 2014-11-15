@@ -29,8 +29,6 @@ public:
 	ConnectionWindow();
 	~ConnectionWindow();
 
-	void Update();
-
 	void newConnection();
 	void refreshList();
 

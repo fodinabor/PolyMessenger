@@ -24,13 +24,14 @@ THE SOFTWARE.
 #include "ConnectionWindow.h"
 
 MessengerFrame::MessengerFrame(){
+	visibleChat = NULL;
+
 	connBtn = new UIButton("Connections", 100);
 	connBtn->addEventListener(this, UIEvent::CLICK_EVENT);
 	addChild(connBtn);
-	connBtn->setPosition(50,50);
+	connBtn->setPosition(10,50);
 
 	connWin = new ConnectionWindow();
-	connWin->setPosition(getHeight()/2 - connWin->getHeight()/2, getWidth()/2 - connWin->getWidth()/2);
 	connWin->connections->addEventListener(this, ChatEvent::EVENT_RECEIVE_CHAT_MSG);
 
 	modalBlocker = new UIRect(10, 10);
@@ -40,14 +41,10 @@ MessengerFrame::MessengerFrame(){
 	modalBlocker->enabled = false;
 	modalBlocker->blockMouseInput = true;
 	modalBlocker->processInputEvents = true;
-	addChild(modalBlocker);
-
+	
 	modalRoot = new UIElement();
-	addChild(modalRoot);
-
+	
 	modalChild = NULL;
-
-	visibleChat = NULL;
 
 	Resize(Services()->getCore()->getXRes(), Services()->getCore()->getYRes());
 }
@@ -76,12 +73,22 @@ void MessengerFrame::showChat(String address){
 	addChild(visibleChat);
 }
 
+void MessengerFrame::newChat(String address){
+	for (int i = 0; i < chatFrames.size(); i++){
+		if (address == chatFrames[i]->getAddress()){
+			return;
+		}
+	}
+	ChatFrame *chat = new ChatFrame(address);
+	chatFrames.push_back(chat);
+}
+
 void MessengerFrame::showModal(UIWindow* modalChild){
+	addChild(modalBlocker);
 	modalBlocker->enabled = true;
 
-	//focusChild(NULL);
-
 	this->modalChild = modalChild;
+	addChild(modalRoot);
 	modalRoot->addChild(modalChild);
 	modalChild->showWindow();
 	modalChild->addEventListener(this, UIEvent::CLOSE_EVENT);
@@ -92,12 +99,13 @@ void MessengerFrame::showModal(UIWindow* modalChild){
 
 void MessengerFrame::hideModal() {
 	if (modalChild) {
+		removeChild(modalRoot);
 		modalRoot->removeChild(modalChild);
-		//assetBrowser->removeAllHandlers();
 		modalChild->hideWindow();
 		modalChild = NULL;
 	}
 	modalBlocker->enabled = false;
+	removeChild(modalBlocker);
 }
 
 TextInputPopup* MessengerFrame::showTextInput(String caption, String action, String value){
@@ -114,7 +122,11 @@ void MessengerFrame::Resize(int width, int height){
 
 	modalBlocker->Resize(width, height);
 
-	connWin->setPosition(getHeight() / 2 - connWin->getHeight() / 2, getWidth() / 2 - connWin->getWidth() / 2);
+	for (int i = 0; i < chatFrames.size(); i++){
+		chatFrames[i]->Resize(Services()->getCore()->getXRes() - 150, Services()->getCore()->getYRes());
+	}
+
+	connWin->setPosition(getWidth() / 2 - connWin->getWidth() / 2, getHeight() / 2 - connWin->getHeight() / 2);
 }
 
 void MessengerFrame::handleEvent(Event *e){
@@ -149,4 +161,5 @@ ChatFrame* MessengerFrame::getChatForAddress(String address){
 			return chatFrames[i];
 		}
 	}
+	return NULL;
 }

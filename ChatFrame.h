@@ -35,6 +35,7 @@ public:
 
 	static const int OWN_MESSAGE = 0;
 	static const int PARTNER_MESSAGE = 1;
+	static const int SYSTEM_MESSAGE = 2;
 
 private:
 	UIMultilineLabel *message;

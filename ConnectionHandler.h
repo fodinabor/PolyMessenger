@@ -50,12 +50,17 @@ public:
 	String sslRead();
 	void sslWrite(String text);
 
+	void runThread();
+
 	String getAddress();
+	bool getSuccess(){ return allSuccess; }
 
 	//void handleEvent(Event *e);
 
 	const static int CONN_SERVER = 0;
 	const static int CONN_CLIENT = 0;
+
+	CoreMutex *sslMutex;
 
 protected:
 	String address;
@@ -121,7 +126,7 @@ public:
 	ConnectionHandler();
 	~ConnectionHandler();
 
-	void newConnection(String address);
+	bool newConnection(String address);
 
 	void Update();
 

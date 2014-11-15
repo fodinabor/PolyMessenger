@@ -26,7 +26,7 @@ THE SOFTWARE.
 
 using namespace Polycode;
 
-class PolyMessengerApp {
+class PolyMessengerApp : public EventDispatcher {
 public:
 	PolyMessengerApp(PolycodeView *view);
 	~PolyMessengerApp();

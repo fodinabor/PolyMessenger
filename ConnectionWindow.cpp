@@ -21,6 +21,7 @@ THE SOFTWARE.
 */
 #include "ConnectionWindow.h"
 #include "MessengerFrame.h"
+#include "ChatFrame.h"
 
 extern MessengerFrame *globalFrame;
 
@@ -29,6 +30,7 @@ ConnectionWindow::ConnectionWindow() : UIWindow("Connections",480,320){
 
 	connections = new ConnectionHandler();
 	connections->addEventListener(this, ConnectionEvent::CONNECT_EVENT);
+	connections->addEventListener(this, ConnectionEvent::DISCONNECT_EVENT);
 
 	connList = new UITreeContainer("Assets/internet.png", "Open Connections", 350, 300);
 	connList->getRootNode()->addEventListener(this, UITreeEvent::SELECTED_EVENT);
@@ -50,13 +52,11 @@ ConnectionWindow::~ConnectionWindow(){
 
 }
 
-void ConnectionWindow::Update(){
-	
-}
-
 void ConnectionWindow::newConnection(){
-	connections->newConnection(addrInput->getText());
-	addrInput->setText("");
+	if (connections->newConnection(addrInput->getText())){
+		globalFrame->newChat(addrInput->getText());
+		addrInput->setText("");
+	}
 	refreshList();
 }
 
@@ -66,6 +66,8 @@ void ConnectionWindow::refreshList(){
 	for (int i = 0; i < addresses.size(); i++){
 		connList->getRootNode()->addTreeChild("Assets/globe.png", addresses[i]);
 	}
+	if (connList->getRootNode()->isCollapsed())
+		connList->getRootNode()->toggleCollapsed();
 }
 
 String ConnectionWindow::getSelected(){
@@ -85,9 +87,20 @@ void ConnectionWindow::handleEvent(Event *e){
 		newConnection();
 	}
 
-	if (e->getDispatcher() == connections){
-		globalFrame->showModal(this);
-		refreshList();
+	if (e->getEventType() == "ConnEvent"){
+		ConnectionEvent *connE = (ConnectionEvent*)e;
+		if (e->getDispatcher() == connections){
+			if (e->getEventCode() == ConnectionEvent::CONNECT_EVENT){
+				globalFrame->showModal(this);
+				refreshList();
+				globalFrame->newChat(addrInput->getText());
+			}
+			if (e->getEventCode() == ConnectionEvent::DISCONNECT_EVENT){
+				connections->disconnect(connE->connection->getAddress());
+				refreshList();
+				globalFrame->getChatForAddress(connE->connection->getAddress())->newMessage("Partner disconnected..", ChatMessage::SYSTEM_MESSAGE);
+			}
+		}
 	}
 
 	UIWindow::handleEvent(e);
