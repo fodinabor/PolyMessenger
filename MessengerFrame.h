@@ -25,13 +25,14 @@ THE SOFTWARE.
 
 class ChatFrame;
 class ConnectionWindow;
+class ConnectionHandler;
 
 class MessengerFrame : public UIElement {
 public:
 	MessengerFrame();
 	~MessengerFrame();
 
-	void newChat(String address);
+	void showChat(String address);
 
 	void showModal(UIWindow* modal);
 	void hideModal();
@@ -41,8 +42,14 @@ public:
 	void Resize(int width, int height);
 	void handleEvent(Event *e);
 
+	ConnectionHandler *getConnections();
+
+	ChatFrame* getChatForAddress(String address);
+
 private:
-	ChatFrame* chat;
+	std::vector<ChatFrame*> chatFrames;
+	ChatFrame* visibleChat;
+
 
 	UIButton *connBtn;
 

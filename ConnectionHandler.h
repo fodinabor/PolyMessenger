@@ -41,33 +41,73 @@ THE SOFTWARE.
 
 using namespace Polycode;
 
-class Connection {
+class Connection : public Threaded {
 public:
-	Connection(String address);
-	~Connection();
-
-	void createTCPConnection(String address);
-
-	void createSSLConnetion();
+	Connection(int clServ);
 
 	void disconnect();
 
-	char* sslRead();
-
-	void sslWrite(char *text);
+	String sslRead();
+	void sslWrite(String text);
 
 	String getAddress();
 
-private:
+	//void handleEvent(Event *e);
+
+	const static int CONN_SERVER = 0;
+	const static int CONN_CLIENT = 0;
+
+protected:
 	String address;
 	int s;
 	SSL *sslHandle;
 	SSL_CTX *sslContext;
+
+	int clServ;
+
+	//Timer *timer;
+
+	bool allSuccess;
 };
 
-class ConnectionEvent : Event {
-	ConnectionEvent();
-	~ConnectionEvent();
+class ConnectionClient : public Connection {
+public:
+	ConnectionClient(String address);
+	ConnectionClient(int socket, SSL *handle, String address);
+	~ConnectionClient();
+
+	void createTCPConnection(String address);
+	void createSSLConnetion();
+
+	void updateThread();
+};
+
+class ConnectionServer : public Connection {
+public:
+	ConnectionServer();
+	~ConnectionServer();
+
+	void openListener(int port);
+	void acceptConnection();
+
+	void createSSLContext();
+
+	void updateThread();
+
+	void loadCerts();
+
+	//void handleEvent(Event *e);
+
+private:
+	String certFile;
+
+	//SSL *clSocket;
+};
+
+class ConnectionEvent : public Event {
+public:
+	ConnectionEvent(){ eventType = "ConnEvent"; }
+	~ConnectionEvent(){}
 
 	Connection *connection;
 
@@ -76,21 +116,26 @@ class ConnectionEvent : Event {
 	static const int DO_CONNECT_EVENT = EVENTBASE_NONPOLYCODE + 252;
 };
 
-class ConnectionHandler : EventDispatcher {
+class ConnectionHandler : public EventDispatcher {
 public:
 	ConnectionHandler();
 	~ConnectionHandler();
 
 	void newConnection(String address);
 
+	void Update();
+
 	void disconnectAll();
 	void disconnect(String address);
+
+	void handleEvent(Event *e);
 
 	Connection* getConnection(String address);
 
 	std::vector<String> getAddresses();
 
 private:
+	ConnectionServer *server;
 	std::vector<Connection*> connections;
 
 };

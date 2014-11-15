@@ -26,11 +26,16 @@ THE SOFTWARE.
 extern UIGlobalMenu *globalMenu;
 extern MessengerFrame *globalFrame;
 
-ChatMessage::ChatMessage(String content){
+ChatMessage::ChatMessage(String content, int who){
 	message = new UIMultilineLabel(content, 12, 4, "sans");
 
 	messageBg = new UIRect(200, message->getHeight() + 5);
-	messageBg->setColor(0.2, 0.5, 0.5, 0.4);
+	
+	if (who == ChatMessage::OWN_MESSAGE)
+		messageBg->setColor(0.2, 0.5, 0.5, 0.4);
+	else
+		messageBg->setColor(0.5, 0.5, 0.2, 0.4);
+
 	messageBg->setBlendingMode(Renderer::BLEND_MODE_NORMAL);
 	messageBg->addEventListener(this, InputEvent::EVENT_MOUSEDOWN);
 	messageBg->processInputEvents = true;
@@ -91,8 +96,13 @@ ChatFrame::ChatFrame(String address) : UIElement(200, Services()->getCore()->get
 
 ChatFrame::~ChatFrame(){}
 
-void ChatFrame::newMessage(String message){
-	ChatMessage *newMsg = new ChatMessage(message.substr(0, message.find_last_of("\n")));
+void ChatFrame::newMessage(String message, int who){
+	ChatMessage *newMsg;
+	if (message.find_last_of("\n") < message.length() - String("\n").length()){
+		newMsg = new ChatMessage(message, who);
+	} else {
+		newMsg = new ChatMessage(message.substr(0, message.find_last_of("\n")), who);
+	}
 	messages.push_back(newMsg);
 	addChild(newMsg);
 	Resize(getHeight(), getWidth());
@@ -112,13 +122,16 @@ void ChatFrame::Resize(int width, int height){
 		messages[i]->setPositionY(offsetY);
 		offsetY += messages[i]->getHeight();
 	}
+
+	chatInput->Resize(200, 50);
+	chatInput->setPositionY(getHeight() - chatInput->getHeight());
 }
 
 void ChatFrame::handleEvent(Event* e){
 	if (e->getDispatcher() == sendBtn && e->getEventType() == "UIEvent"){
-		newMessage(chatInput->getText());
+		newMessage(chatInput->getText(), ChatMessage::OWN_MESSAGE);
+		dispatchEvent(new ChatEvent(address, chatInput->getText()), ChatEvent::EVENT_SEND_CHAT_MSG);
 		chatInput->setText("", false);
-		dispatchEvent(new UIEvent(), UIEvent::OK_EVENT);
 	}
 }
 

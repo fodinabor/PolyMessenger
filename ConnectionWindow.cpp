@@ -28,6 +28,7 @@ ConnectionWindow::ConnectionWindow() : UIWindow("Connections",480,320){
 	closeOnEscape = true;
 
 	connections = new ConnectionHandler();
+	connections->addEventListener(this, ConnectionEvent::CONNECT_EVENT);
 
 	connList = new UITreeContainer("Assets/internet.png", "Open Connections", 350, 300);
 	connList->getRootNode()->addEventListener(this, UITreeEvent::SELECTED_EVENT);
@@ -61,8 +62,9 @@ void ConnectionWindow::newConnection(){
 
 void ConnectionWindow::refreshList(){
 	connList->getRootNode()->clearTree();
-	for (int i = 0; i < connections->getAddresses().size(); i++){
-		connList->getRootNode()->addTreeChild("Assets/globe.png", connections->getAddresses()[i]);
+	std::vector<String> addresses = connections->getAddresses();
+	for (int i = 0; i < addresses.size(); i++){
+		connList->getRootNode()->addTreeChild("Assets/globe.png", addresses[i]);
 	}
 }
 
@@ -74,12 +76,18 @@ void ConnectionWindow::handleEvent(Event *e){
 	if (e->getDispatcher() == connList->getRootNode()){
 		if (e->getEventCode() == UITreeEvent::EXECUTED_EVENT){
 			this->selection = ((UITreeEvent*)e)->selection->getLabelText();
-			dispatchEvent(new UIEvent(), UIEvent::OK_EVENT);
+			globalFrame->showChat(selection);
+			dispatchEvent(new UIEvent(), UIEvent::CLOSE_EVENT);
 		}
 	}
 
 	if (e->getDispatcher() == newConnBtn){
 		newConnection();
+	}
+
+	if (e->getDispatcher() == connections){
+		globalFrame->showModal(this);
+		refreshList();
 	}
 
 	UIWindow::handleEvent(e);

@@ -27,11 +27,14 @@ class TextInputPopup;
 
 class ChatMessage : public UIElement {
 public:
-	ChatMessage(String content);
+	ChatMessage(String content, int who);
 	~ChatMessage();
 
 	void updateSize();
 	void handleEvent(Event *e);
+
+	static const int OWN_MESSAGE = 0;
+	static const int PARTNER_MESSAGE = 1;
 
 private:
 	UIMultilineLabel *message;
@@ -46,7 +49,7 @@ public:
 	ChatFrame(String address);
 	~ChatFrame();
 
-	void newMessage(String message);
+	void newMessage(String message, int who);
 
 	String getAddress();
 
@@ -70,7 +73,8 @@ public:
 	String message;
 	int msgID;
 
-	static const int EVENT_NEW_CHAT_MSG = EVENTBASE_NONPOLYCODE + 325;
+	static const int EVENT_SEND_CHAT_MSG = EVENTBASE_NONPOLYCODE + 325;
 	static const int EVENT_DELETE_CHAT_MSG = EVENTBASE_NONPOLYCODE + 326;
 	static const int EVENT_CHANGE_CHAT_MSG = EVENTBASE_NONPOLYCODE + 327;
+	static const int EVENT_RECEIVE_CHAT_MSG = EVENTBASE_NONPOLYCODE + 328;
 };

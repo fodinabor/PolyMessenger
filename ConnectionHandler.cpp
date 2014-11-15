@@ -20,41 +20,110 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 */
 #include "ConnectionHandler.h"
+#include "ChatFrame.h"
 
-
-Connection::Connection(String address){
-	createTCPConnection(address);
+Connection::Connection(int clServ){
+	//timer = new Timer(true, 500);
+	this->clServ = clServ;
 }
 
+void Connection::disconnect(){
+	if (s){
+#ifdef _WINDOWS
+		closesocket(s);
+#else
+		close(s);
+#endif
+	}
+	if (sslHandle){
+		SSL_shutdown(sslHandle);
+		SSL_free(sslHandle);
+	}
+	if (sslContext)
+		SSL_CTX_free(sslContext);
+}
 
-Connection::~Connection(){
+String Connection::sslRead(){
+	const int readSize = 1024;
+	String rc = String();
+	int received, count = 0;
+	char buffer[1024];
+
+	if (s){
+		while (true){
+			received = SSL_read(sslHandle, buffer, readSize);
+			buffer[received] = '\0';
+
+			if (received > 0){
+				for (int i = 0; i < received; i++){
+					rc.append(buffer[i]);
+				}
+			}
+
+			if (received < readSize)
+				break;
+			count++;
+		}
+		dispatchEvent(new ChatEvent(address, rc), ChatEvent::EVENT_RECEIVE_CHAT_MSG);
+	}
+
+	return rc;
+}
+
+void Connection::sslWrite(String text){
+	if (s)
+		SSL_write(sslHandle, text.c_str(), text.length());
+}
+
+//void Connection::handleEvent(Event *e){
+//	//if (e->getDispatcher() == timer && e->getEventCode() == Timer::EVENT_TRIGGER){
+//	//	if (allSuccess)
+//	//		Services()->getCore()->createThread(this);
+//	//}
+//}
+
+ConnectionClient::ConnectionClient(String address) : Connection(Connection::CONN_CLIENT){
+	this->core = Services()->getCore();
+	this->eventMutex = Services()->getCore()->getEventMutex();
+	
+	createTCPConnection(address);
+	
+	if (allSuccess)
+		createSSLConnetion();
+
+	if (allSuccess)
+		core->createThread(this);
+}
+
+ConnectionClient::ConnectionClient(int socket, SSL *handle, String address) : Connection(Connection::CONN_CLIENT){
+	this->core = Services()->getCore();
+	this->eventMutex = Services()->getCore()->getEventMutex();
+
+	s = socket;
+	this->address = address;
+	sslHandle = handle;
+
+	core->createThread(this);
+}
+
+ConnectionClient::~ConnectionClient(){
 	disconnect();
 }
 
-void Connection::createTCPConnection(String address) {
+void ConnectionClient::createTCPConnection(String address) {
+	allSuccess = false;
 	int pathIndex;
 	String host, port;
 	this->address = address;
 	
-	int protocolIndex = address.find_first_of("://");
-	if (protocolIndex != 0){
-		protocolIndex += strlen("://");
-		pathIndex = address.find_first_of("/", protocolIndex);
+	pathIndex = address.find_first_of(":");
 
-		if (pathIndex != 0){
-			host = address.substr(protocolIndex, pathIndex - strlen("/"));
-		} else {
-			host = address.substr(protocolIndex, address.length());
-		}
+	if (pathIndex != 0){
+		host = address.substr(0, pathIndex);
+		port = address.substr(pathIndex + 1);
 	} else {
-		pathIndex = address.find_first_of(":");
-
-		if (pathIndex != 0){
-			host = address.substr(0, pathIndex);
-			port = address.substr(pathIndex + 1);
-		} else {
-			host = address;
-		}
+		host = address;
+		port = "5534";
 	}
 
 	struct sockaddr_in server;
@@ -65,9 +134,9 @@ void Connection::createTCPConnection(String address) {
 	//Create a socket
 #if PLATFORM == PLATFORM_WINDOWS
 	char ipstringbuffer[46];
-	unsigned long ipbufferlength = 46;
+	unsigned long ipbufferlength = sizeof(ipstringbuffer);
 
-	if ((s = socket(AF_INET, SOCK_STREAM, 0)) == INVALID_SOCKET) {
+	if ((s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == INVALID_SOCKET) {
 		Logger::log("We haven't been able to create a socket: %d\n", WSAGetLastError());
 #elif PLATFORM == PLATFORM_MAC || PLATFORM == PLATFORM_UNIX
 	char* ipstringbuffer;
@@ -117,9 +186,11 @@ void Connection::createTCPConnection(String address) {
 #endif
 		return;
 	}
+	allSuccess = true;
 }
 
-void Connection::createSSLConnetion(){
+void ConnectionClient::createSSLConnetion(){
+	allSuccess = false;
 	sslHandle = NULL;
 	sslContext = NULL;
 
@@ -131,90 +202,213 @@ void Connection::createSSLConnetion(){
 
 		// New context saying we are a client, and using SSL 2 or 3
 		sslContext = SSL_CTX_new(SSLv23_client_method());
-		if (sslContext == NULL)
+		if (sslContext == NULL){
 			ERR_print_errors_fp(stderr);
+			return;
+		}
 
 		// Create an SSL struct for the connection
 		sslHandle = SSL_new(sslContext);
-		if (sslHandle == NULL)
+		if (sslHandle == NULL){
 			ERR_print_errors_fp(stderr);
+			return;
+		}
 
 		// Connect the SSL struct to our connection
-		if (!SSL_set_fd(sslHandle, s))
+		if (!SSL_set_fd(sslHandle, s)){
 			ERR_print_errors_fp(stderr);
+			return;
+		}
 
 		// Initiate SSL handshake
-		if (SSL_connect(sslHandle) != 1)
+		if (SSL_connect(sslHandle) != 1){
 			ERR_print_errors_fp(stderr);
-	} else
-	{
+			return;
+		}
+	} else {
 		Logger::log("Connect failed");
 	}
+	allSuccess = true;
 }
 
-void Connection::disconnect(){
-	if (s){
+void ConnectionClient::updateThread(){
+	sslRead();
 #ifdef _WINDOWS
-		closesocket(s);
+	Sleep(500);
 #else
-		close(s);
+	usleep(500 * 1000);
 #endif
-	}
-	if (sslHandle)
-	{
-		SSL_shutdown(sslHandle);
-		SSL_free(sslHandle);
-	}
-	if (sslContext)
-		SSL_CTX_free(sslContext);
 }
 
-char *Connection::sslRead(){
-	const int readSize = 1024;
-	char *rc = NULL;
-	int received, count = 0;
-	char buffer[1024];
+ConnectionServer::ConnectionServer() : Connection(ConnectionClient::CONN_SERVER) {
+	certFile = "Assets/certFile.pem";
+	this->core = Services()->getCore();
+	this->eventMutex = Services()->getCore()->getEventMutex();
 
+	sslHandle = NULL;
+
+	openListener(5534);
+
+	if (allSuccess)
+		createSSLContext();
+
+	if (allSuccess)
+		loadCerts();
+
+	if (allSuccess){
+		core->createThread(this);
+	}
+}
+
+ConnectionServer::~ConnectionServer(){
+	disconnect();
+}
+
+void ConnectionServer::openListener(int port) {
+	struct sockaddr_in addr;
+	allSuccess = false;
+
+#ifdef _WINDOWS
+	if ((s = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) == INVALID_SOCKET){
+		Logger::log("Error creating server socket: %d\n", WSAGetLastError());
+#else
+	if(sd = socket(PF_INET, SOCK_STREAM, 0) == -1){
+		Logger::log("Error creating server socket: %s\n", strerror(errno));
+#endif
+	return;
+	}
+	
+	memset(&addr, 0, sizeof(addr));
+	addr.sin_family = AF_INET;
+	addr.sin_port = htons(port);
+	addr.sin_addr.s_addr = INADDR_ANY;
+
+	if (bind(s, (struct sockaddr*)&addr, sizeof(addr)) != 0)	{
+#ifdef _WINDOWS
+		Logger::log("Server can't bind port: %d\n", WSAGetLastError());
+#else
+		Logger::log("Server can't bind port: %s\n", strerror(errno));
+#endif
+		return;
+	}
+
+	if (listen(s, SOMAXCONN) != 0){
+#ifdef _WINDOWS
+		Logger::log("Can't configure listening port: %d\n", WSAGetLastError());
+#else
+		Logger::log("Can't configure listening port: %s\n", strerror(errno));
+#endif
+		return;
+	}
+	allSuccess = true;
+}
+
+void ConnectionServer::createSSLContext(){
+	allSuccess = false;
 	if (s){
-		while (true){
-			if (!rc)
-				rc = (char*)malloc(readSize * sizeof(char) + 1);
-			else
-				rc = (char*)realloc(rc, (count + 1) *
-				readSize * sizeof(char) + 1);
-
-			received = SSL_read(sslHandle, buffer, readSize);
-			buffer[received] = '\0';
-
-			if (received > 0)
-				strcat(rc, buffer);
-
-			if (received < readSize)
-				break;
-			count++;
+		OpenSSL_add_all_algorithms();  /* load & register all cryptos, etc. */
+		SSL_load_error_strings();   /* load all error messages */
+		SSL_library_init();
+		sslContext = SSL_CTX_new(SSLv3_server_method());   /* create new context from method */
+		if (sslContext == NULL){
+			ERR_print_errors_fp(stderr);
+			return;
 		}
+		allSuccess = true;
 	}
-
-	return rc;
 }
 
-void Connection::sslWrite(char *text){
-	if (s)
-		SSL_write(sslHandle, text, strlen(text));
+void ConnectionServer::loadCerts(){
+	allSuccess = false;
+	if (!OSBasics::fileExists(certFile)){
+		Services()->getCore()->executeExternalCommand("set OPENSSL_CONF=openssl.cfg && openssl", "req -x509 -nodes -days 365 -newkey rsa:1024 -keyout " + certFile.substr(certFile.find_last_of("/") + String("/").length()) + " -out " + certFile.substr(certFile.find_last_of("/") + String("/").length()) + " -batch", "Assets");
+	}
+
+	/* set the local certificate from CertFile */
+	if (SSL_CTX_use_certificate_file(sslContext, certFile.c_str(), SSL_FILETYPE_PEM) <= 0)
+	{
+		ERR_print_errors_fp(stderr);
+		return;
+	}
+	/* set the private key from KeyFile (may be the same as CertFile) */
+	if (SSL_CTX_use_PrivateKey_file(sslContext, certFile.c_str(), SSL_FILETYPE_PEM) <= 0)
+	{
+		ERR_print_errors_fp(stderr);
+		return;
+	}
+	/* verify private key */
+	if (!SSL_CTX_check_private_key(sslContext))
+	{
+		fprintf(stderr, "Private key does not match the public certificate\n");
+		return;
+	}
+	allSuccess = true;
+}
+
+//String ConnectionServer::sslRead(){
+//	String rc = String();
+//	char buf[1024];
+//	int sd, bytes;
+//
+//	sd = SSL_get_fd(clSocket);
+//
+//	if (SSL_accept(clSocket) == -1) {    /* do SSL-protocol accept */
+//		ERR_print_errors_fp(stderr);
+//	} else {
+//		bytes = SSL_read(clSocket, buf, sizeof(buf)); /* get request */
+//		if (bytes > 0) {
+//
+//			sockaddr_in addr = sockaddr_in();
+//			unsigned long nameLen = sizeof(sockaddr);
+//			getpeername(sd, (struct sockaddr*)&addr, (int*)nameLen);
+//			String ipstringbuffer = inet_ntoa(addr.sin_addr);
+//
+//			buf[bytes] = 0;
+//			dispatchEvent(new ChatEvent(ipstringbuffer , String(buf)), ChatEvent::EVENT_RECEIVE_CHAT_MSG);
+//		} else {
+//			ERR_print_errors_fp(stderr);
+//		}
+//	}     /* get socket connection */
+//	SSL_free(clSocket);         /* release SSL state */
+//	closesocket(sd);          /* close connection */
+//}
+
+void ConnectionServer::updateThread(){
+	struct sockaddr_in addr;
+	socklen_t len = sizeof(addr);
+
+	int client = accept(s, (struct sockaddr*)&addr, &len); /* accept connection as usual */
+	address = inet_ntoa(addr.sin_addr) + String(":") + ntohs(addr.sin_port);
+	Logger::log("Connection: %s:%d\n", inet_ntoa(addr.sin_addr), ntohs(addr.sin_port));
+	sslHandle = SSL_new(sslContext);  /* get new SSL state with context */
+	SSL_set_fd(sslHandle, client); /* set connection socket to SSL state */
+	SSL_accept(sslHandle);
+
+	ConnectionClient *newClient = new ConnectionClient(client, sslHandle, address);
+	ConnectionEvent *connE = new ConnectionEvent();
+	connE->connection = newClient;
+	dispatchEvent(connE, ConnectionEvent::CONNECT_EVENT);
 }
 
 String Connection::getAddress(){
 	return address;
 }
 
-ConnectionHandler::ConnectionHandler(){}
+ConnectionHandler::ConnectionHandler(){
+	server = new ConnectionServer();
+	server->addEventListener(this, ConnectionEvent::CONNECT_EVENT);
+
+	this->addEventListener(this, ConnectionEvent::CONNECT_EVENT);
+	this->addEventListener(this, ChatEvent::EVENT_RECEIVE_CHAT_MSG);
+}
 
 ConnectionHandler::~ConnectionHandler(){
 	disconnectAll();
 }
 
 void ConnectionHandler::newConnection(String address){
-	Connection* newCon = new Connection(address);
+	Connection* newCon = new ConnectionClient(address);
+	newCon->addEventListener(this, ChatEvent::EVENT_RECEIVE_CHAT_MSG);
 	connections.push_back(newCon);
 }
 
@@ -248,4 +442,33 @@ std::vector<String> ConnectionHandler::getAddresses(){
 		retVec.push_back(connections[i]->getAddress());
 	}
 	return retVec;
+}
+
+void ConnectionHandler::handleEvent(Event* e){
+	if (e->getEventType() == "ChatEvent"){
+		ChatEvent* event = (ChatEvent*)e;
+		if (event->getEventCode() == ChatEvent::EVENT_SEND_CHAT_MSG){
+			getConnection(event->address)->sslWrite(event->message);
+		}
+	}
+	if (e->getEventType() == "ConnEvent" && e->getDispatcher() == this && e->getEventCode() == ConnectionEvent::CONNECT_EVENT){
+		ConnectionEvent *event = (ConnectionEvent*)e;
+		event->connection->addEventListener(this, ChatEvent::EVENT_RECEIVE_CHAT_MSG);
+		connections.push_back(event->connection);
+	}
+}
+
+void ConnectionHandler::Update(){
+	for (int i = server->eventQueue.size() -1; i >= 0; i--){
+		dispatchEvent(server->eventQueue[i], server->eventQueue[i]->getEventCode());
+		server->eventQueue.erase(server->eventQueue.begin() + i);
+	}
+
+	for (int c = 0; c < connections.size(); c++){
+		Connection *connection = connections[c];
+		for (int e = connection->eventQueue.size() - 1; e >= 0; e--){
+			dispatchEvent(connection->eventQueue[e], connection->eventQueue[e]->getEventCode());
+			connection->eventQueue.erase(connection->eventQueue.begin() + e);
+		}
+	}
 }

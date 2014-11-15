@@ -35,6 +35,11 @@ PolyMessengerApp::PolyMessengerApp(PolycodeView *view) {
 	CoreServices::getInstance()->getResourceManager()->addDirResource("UIThemes", true);
 	CoreServices::getInstance()->getConfig()->loadConfig("Polycode", "UIThemes/dark/theme.xml");
 	
+	SceneLabel::defaultAnchor = Vector3(-1.0, -1.0, 0.0);
+	SceneLabel::defaultPositionAtBaseline = true;
+	SceneLabel::defaultSnapToPixels = true;
+	SceneLabel::createMipmapsForLabels = false;
+
 	Entity::defaultBlendingMode = Renderer::BLEND_MODE_NONE;
 	CoreServices::getInstance()->getRenderer()->setTextureFilteringMode(Renderer::TEX_FILTERING_NEAREST);
 
@@ -56,6 +61,7 @@ PolyMessengerApp::PolyMessengerApp(PolycodeView *view) {
 
 	mainFrame = new MessengerFrame();
 	screen->addChild(mainFrame);
+	globalFrame = mainFrame;
 }
 
 PolyMessengerApp::~PolyMessengerApp() {
@@ -65,6 +71,8 @@ PolyMessengerApp::~PolyMessengerApp() {
 bool PolyMessengerApp::Update() {
 	if ((Services()->getInput()->getKeyState(KEY_LALT) || Services()->getInput()->getKeyState(KEY_RALT)) && Services()->getInput()->getKeyState(KEY_F4))
 		core->Shutdown();
+
+	mainFrame->getConnections()->Update();
 
 	return core->updateAndRender();
 }

@@ -24,8 +24,6 @@ THE SOFTWARE.
 #include "ConnectionWindow.h"
 
 MessengerFrame::MessengerFrame(){
-	chat = NULL;
-
 	connBtn = new UIButton("Connections", 100);
 	connBtn->addEventListener(this, UIEvent::CLICK_EVENT);
 	addChild(connBtn);
@@ -33,6 +31,7 @@ MessengerFrame::MessengerFrame(){
 
 	connWin = new ConnectionWindow();
 	connWin->setPosition(getHeight()/2 - connWin->getHeight()/2, getWidth()/2 - connWin->getWidth()/2);
+	connWin->connections->addEventListener(this, ChatEvent::EVENT_RECEIVE_CHAT_MSG);
 
 	modalBlocker = new UIRect(10, 10);
 	modalBlocker->setBlendingMode(Renderer::BLEND_MODE_NORMAL);
@@ -48,15 +47,33 @@ MessengerFrame::MessengerFrame(){
 
 	modalChild = NULL;
 
+	visibleChat = NULL;
+
 	Resize(Services()->getCore()->getXRes(), Services()->getCore()->getYRes());
 }
 
 MessengerFrame::~MessengerFrame(){}
 
-void MessengerFrame::newChat(String address){
-	chat = new ChatFrame(address);
-	chat->addEventListener(this, UIEvent::OK_EVENT);
-	addChild(chat);
+void MessengerFrame::showChat(String address){
+	if (visibleChat){
+		removeChild(visibleChat);
+		visibleChat->removeAllHandlers();
+	}
+
+	for (int i = 0; i < chatFrames.size(); i++){
+		if (address == chatFrames[i]->getAddress()){
+			visibleChat = chatFrames[i];
+			visibleChat->addEventListener(this, ChatEvent::EVENT_SEND_CHAT_MSG);
+			addChild(visibleChat);
+			return;
+		}
+	}
+
+	ChatFrame *chat = new ChatFrame(address);
+	chatFrames.push_back(chat);
+	visibleChat = chat;
+	visibleChat->addEventListener(this, ChatEvent::EVENT_SEND_CHAT_MSG);
+	addChild(visibleChat);
 }
 
 void MessengerFrame::showModal(UIWindow* modalChild){
@@ -111,10 +128,25 @@ void MessengerFrame::handleEvent(Event *e){
 			showModal(connWin);
 		}
 	}
-	if (e->getDispatcher() == chat){
+	if (e->getEventType() == "ChatEvent"){
 		ChatEvent* cEvent = (ChatEvent*)e;
-		if (cEvent->getEventCode() == ChatEvent::EVENT_NEW_CHAT_MSG){
+		if (cEvent->getEventCode() == ChatEvent::EVENT_SEND_CHAT_MSG){
 			connWin->connections->getConnection(cEvent->address)->sslWrite(const_cast<char*>(cEvent->message.c_str()));
+		}
+		if (cEvent->getEventCode() == ChatEvent::EVENT_RECEIVE_CHAT_MSG){
+			getChatForAddress(cEvent->address)->newMessage(cEvent->message, ChatMessage::PARTNER_MESSAGE);
+		}
+	}
+}
+
+ConnectionHandler* MessengerFrame::getConnections(){
+	return connWin->connections;
+}
+
+ChatFrame* MessengerFrame::getChatForAddress(String address){
+	for (int i = 0; i < chatFrames.size(); i++){
+		if (chatFrames[i]->getAddress() == address){
+			return chatFrames[i];
 		}
 	}
 }
